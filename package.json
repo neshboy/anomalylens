@@ -1,0 +1,43 @@
+{
+  "name": "anomalylens",
+  "version": "0.1.0",
+  "description": "Explainable statistical anomaly detection for security/ops telemetry -- every flagged anomaly names exactly which detector fired and why.",
+  "type": "module",
+  "license": "MIT",
+  "author": "AnomalyLens contributors",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "anomalylens": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "pretest": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "anomaly-detection",
+    "observability",
+    "prometheus",
+    "cusum",
+    "seasonal-decomposition",
+    "explainable-ai",
+    "aiops",
+    "cli"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}
