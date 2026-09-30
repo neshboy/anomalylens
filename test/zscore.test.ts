@@ -48,4 +48,38 @@ describe('RollingZScoreDetector', () => {
     expect(() => new RollingZScoreDetector({ windowSize: 1 })).toThrow(RangeError);
     expect(() => new RollingZScoreDetector({ threshold: 0 })).toThrow(RangeError);
   });
+
+  it('does not report a spurious anomaly when a large window ages an outlier out into a flat run', () => {
+    // Regression test: with a large windowSize, this detector maintains a
+    // running mean/variance accumulator incrementally instead of
+    // recomputing it from scratch at every point (see detectIncremental in
+    // src/detectors/zscore.ts). The incremental update removes the oldest
+    // point and adds the newest one via floating-point subtraction of
+    // nearly-equal magnitudes, which is exact in real-number arithmetic but
+    // can leave a tiny nonzero rounding residual in the variance right when
+    // a window transitions from "one outlier plus a flat run" to "fully
+    // flat" -- exactly what happens below once the outlier at index 0 ages
+    // out of the window. A buggy incremental implementation reports a wild,
+    // spurious z-score there (dividing by a spuriously near-zero stddev);
+    // a correct one reports nothing, same as recomputing from scratch would.
+    const windowSize = 500; // large enough to exercise the incremental path
+    const n = windowSize + 50;
+    const points: MetricSeries['points'] = [];
+    for (let i = 0; i < n; i++) {
+      // A single outlier at the very start, otherwise a perfectly flat
+      // series -- once the outlier leaves the window, every remaining
+      // window is exactly flat (variance exactly 0) until the series ends.
+      const value = i === 0 ? 10_000 : 0;
+      points.push({ timestampMs: i * 60_000, value });
+    }
+    const series: MetricSeries = { name: 'm', labels: {}, points };
+    const detector = new RollingZScoreDetector({ windowSize, threshold: 3 });
+
+    const anomalies = detector.detect(series);
+
+    for (const a of anomalies) {
+      expect(Number.isFinite(a.score)).toBe(true);
+      expect(Math.abs(a.score)).toBeLessThan(1e6);
+    }
+  });
 });

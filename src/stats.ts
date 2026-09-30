@@ -52,3 +52,64 @@ export function medianAbsoluteDeviation(
   const deviations = values.map((v) => Math.abs(v - median));
   return medianOf(deviations);
 }
+
+/**
+ * Median of `|x - center|` for every `x` in `sorted`, an array that must
+ * already be sorted ascending. Computed in O(n) by merging the two
+ * monotonic runs of deviations that sit on either side of `center` (values
+ * at or below `center` produce decreasing deviations as they approach it,
+ * values above it produce increasing ones), instead of building a fresh
+ * deviations array and re-sorting it from scratch like
+ * `medianAbsoluteDeviation` does. Callers that already have a sorted array
+ * on hand (e.g. a leave-one-out baseline derived from a precomputed sort)
+ * should prefer this to avoid a redundant O(n log n) sort per call.
+ */
+export function medianAbsoluteDeviationFromSorted(sorted: readonly number[], center: number): number {
+  const n = sorted.length;
+  if (n === 0) return NaN;
+
+  // First index with sorted[idx] > center (i.e. an upper-bound search).
+  let lo = 0;
+  let hi = n;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (sorted[mid] > center) hi = mid;
+    else lo = mid + 1;
+  }
+  const splitIdx = lo;
+  const leftLen = splitIdx;
+  const rightLen = n - splitIdx;
+
+  // Deviations ascend as k grows, walking outward from `center` in either
+  // direction: leftDevAt(0) is the value just at/below center, rightDevAt(0)
+  // the value just above it.
+  const leftDevAt = (k: number): number => center - sorted[splitIdx - 1 - k];
+  const rightDevAt = (k: number): number => sorted[splitIdx + k] - center;
+
+  // The k-th smallest (0-indexed) deviation, found by merging the two
+  // ascending runs above -- the same merge step mergesort uses, just with
+  // the two "arrays" generated lazily instead of materialized.
+  const nthSmallestDeviation = (rank: number): number => {
+    let i = 0;
+    let j = 0;
+    let value = NaN;
+    for (let count = 0; count <= rank; count++) {
+      const leftVal = i < leftLen ? leftDevAt(i) : Infinity;
+      const rightVal = j < rightLen ? rightDevAt(j) : Infinity;
+      if (leftVal <= rightVal) {
+        value = leftVal;
+        i++;
+      } else {
+        value = rightVal;
+        j++;
+      }
+    }
+    return value;
+  };
+
+  const mid = Math.floor(n / 2);
+  if (n % 2 === 0) {
+    return (nthSmallestDeviation(mid - 1) + nthSmallestDeviation(mid)) / 2;
+  }
+  return nthSmallestDeviation(mid);
+}
