@@ -1,5 +1,5 @@
 import type { Anomaly, Detector, MetricSeries } from '../types.js';
-import { medianAbsoluteDeviation, medianOf } from '../stats.js';
+import { medianAbsoluteDeviationFromSorted } from '../stats.js';
 import { severityFromRatio } from './severity.js';
 
 export type SeasonalBucketBy = 'hour' | 'day-hour';
@@ -82,20 +82,44 @@ export class SeasonalBaselineDetector implements Detector {
       else bucketIndices.set(key, [i]);
     }
 
+    // Precompute each bucket's value array sorted once, plus a lookup from
+    // original point index to that array's position. Every point's
+    // leave-one-out baseline is then just "the bucket's sorted values minus
+    // one position", so per-point median/MAD no longer each re-sort the
+    // whole bucket from scratch (that used to make this detector's cost
+    // scale roughly quadratically with bucket size).
+    interface BucketPrep {
+      sortedValues: number[];
+      positionOf: Map<number, number>;
+    }
+    const bucketPrep = new Map<string, BucketPrep>();
+    for (const [key, indices] of bucketIndices) {
+      const order = [...indices].sort((a, b) => points[a].value - points[b].value);
+      const sortedValues = order.map((idx) => points[idx].value);
+      const positionOf = new Map<number, number>();
+      order.forEach((idx, pos) => positionOf.set(idx, pos));
+      bucketPrep.set(key, { sortedValues, positionOf });
+    }
+
     const anomalies: Anomaly[] = [];
 
     for (let i = 0; i < points.length; i++) {
       const point = points[i];
       const key = keyForIndex[i];
-      const indices = bucketIndices.get(key);
-      if (!indices) continue;
+      const prep = bucketPrep.get(key);
+      if (!prep) continue;
 
       // Leave-one-out: the baseline for this point excludes this point.
-      const baseline = indices.filter((idx) => idx !== i).map((idx) => points[idx].value);
+      // Removing one position from an already-sorted array keeps it sorted,
+      // so no re-sort is needed here.
+      const pos = prep.positionOf.get(i)!;
+      const baseline = [...prep.sortedValues.slice(0, pos), ...prep.sortedValues.slice(pos + 1)];
       if (baseline.length < this.minBucketSamples) continue;
 
-      const median = medianOf(baseline);
-      const mad = medianAbsoluteDeviation(baseline, median);
+      const mid = Math.floor(baseline.length / 2);
+      const median =
+        baseline.length % 2 === 0 ? (baseline[mid - 1] + baseline[mid]) / 2 : baseline[mid];
+      const mad = medianAbsoluteDeviationFromSorted(baseline, median);
       const effectiveMad = mad === 0 ? EPSILON : mad;
       const deviation = point.value - median;
       const score = deviation / effectiveMad;

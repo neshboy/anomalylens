@@ -234,7 +234,7 @@ export function runCli(argv: string[], deps: { readInput?: (file?: string) => st
     const stdout = parsed.output === 'json' ? formatJson(anomalies) : formatText(anomalies);
     return { exitCode: anomalies.length > 0 ? 1 : 0, stdout, stderr: '' };
   } catch (err) {
-    if (err instanceof CliUsageError) {
+    if (err instanceof CliUsageError || err instanceof RangeError) {
       return { exitCode: 2, stdout: '', stderr: `Error: ${err.message}\n\n${HELP_TEXT}` };
     }
     const message = err instanceof Error ? err.message : String(err);
